@@ -1056,7 +1056,7 @@ public class HMaster extends HRegionServer implements MasterServices {
     }
 
     status.setStatus("Starting assignment manager");
-    this.assignmentManager.joinCluster();
+    this.assignmentManager.joinCluster(initRootProc == null);
     // The below depends on hbase:meta being online.
     this.tableStateManager.start();
 
@@ -1218,39 +1218,7 @@ public class HMaster extends HRegionServer implements MasterServices {
   @VisibleForTesting
   //TODO francis reconcile this with AM?
   public boolean waitForMetaOnline() {
-    return isRegionOnline(RegionInfoBuilder.FIRST_META_REGIONINFO);
-  }
-
-  /**
-   * @return True if region is online and scannable else false if an error or shutdown (Otherwise
-   *   we just block in here holding up all forward-progess).
-   */
-  //TODO francis reconcile this with AM?
-  private boolean isRegionOnline(RegionInfo ri) {
-    RetryCounter rc = null;
-    while (!isStopped()) {
-      RegionState rs = this.assignmentManager.getRegionStates().getRegionState(ri);
-      if (rs.isOpened()) {
-        if (this.getServerManager().isServerOnline(rs.getServerName())) {
-          return true;
-        }
-      }
-      // Region is not OPEN.
-      Optional<Procedure<MasterProcedureEnv>> optProc = this.procedureExecutor.getProcedures().
-          stream().filter(p -> p instanceof ServerCrashProcedure).findAny();
-      // TODO: Add a page to refguide on how to do repair. Have this log message point to it.
-      // Page will talk about loss of edits, how to schedule at least the meta WAL recovery, and
-      // then how to assign including how to break region lock if one held.
-      LOG.warn("{} is NOT online; state={}; ServerCrashProcedures={}. Master startup cannot " +
-          "progress, in holding-pattern until region onlined.",
-          ri.getRegionNameAsString(), rs, optProc.isPresent());
-      // Check once-a-minute.
-      if (rc == null) {
-        rc = new RetryCounterFactory(1000).create();
-      }
-      Threads.sleep(rc.getBackoffTimeAndIncrementAttempts());
-    }
-    return false;
+    return assignmentManager.isRegionOnline(RegionInfoBuilder.FIRST_META_REGIONINFO);
   }
 
   /**
